@@ -1,0 +1,13 @@
+[package]
+name = "one_hash"
+version = "0.1.0"
+edition = "2024"
+description = "A 1# (one-hash) language interpreter and assembler"
+authors = ["pfingsbr"]
+license = "MIT"
+
+[dependencies]
+
+[[bin]]
+name = "one_hash"
+path = "src/main.rs"
