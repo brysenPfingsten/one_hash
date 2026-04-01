@@ -672,6 +672,222 @@ fn expand_builtin_macro(
             output.push(format!("{}_done:", lbl));
             Ok((output, true))
         }
+        // ================================================================
+        // Textbook 1# program macros (parametric versions)
+        // These are assembly implementations of standard 1# programs
+        // ================================================================
+        "compare_eq" => {
+            // Compares two registers for equality
+            // If equal, outputs 1 in result; if not, leaves result empty
+            // compare_eq <a> <b> <result> <tmp1> <tmp2>
+            if parts.len() != 6 {
+                return Err(format!(
+                    "Line {}: 'compare_eq' expects 5 arguments: compare_eq <a> <b> <result> <tmp1> <tmp2>",
+                    line_num
+                ));
+            }
+            let (a, b, result, tmp1, tmp2) = (parts[1], parts[2], parts[3], parts[4], parts[5]);
+            let lbl = unique_label("ceq");
+            // Copy a and b to temps to preserve them
+            output.push(format!("    copy {} {} {}", a, tmp1, result));
+            output.push(format!("    copy {} {} {}", b, tmp2, result));
+            // Compare symbol by symbol
+            output.push(format!("{}:", lbl));
+            output.push(format!("    case {}", tmp1));
+            output.push(format!("    goto {}_a_empty", lbl));
+            output.push(format!("    goto {}_a_one", lbl));
+            output.push(format!("    goto {}_a_hash", lbl));
+            output.push(format!("{}_a_empty:", lbl));
+            // a is empty, b should also be empty
+            output.push(format!("    case {}", tmp2));
+            output.push(format!("    goto {}_equal", lbl));
+            output.push(format!("    goto {}_not_equal", lbl));
+            output.push(format!("    goto {}_not_equal", lbl));
+            output.push(format!("{}_a_one:", lbl));
+            // a has 1, b should also have 1
+            output.push(format!("    case {}", tmp2));
+            output.push(format!("    goto {}_not_equal", lbl));
+            output.push(format!("    goto {}", lbl));
+            output.push(format!("    goto {}_not_equal", lbl));
+            output.push(format!("{}_a_hash:", lbl));
+            // a has #, b should also have #
+            output.push(format!("    case {}", tmp2));
+            output.push(format!("    goto {}_not_equal", lbl));
+            output.push(format!("    goto {}_not_equal", lbl));
+            output.push(format!("    goto {}", lbl));
+            output.push(format!("{}_equal:", lbl));
+            output.push(format!("    add 1 {}", result));
+            output.push(format!("{}_not_equal:", lbl));
+            // Clean up any remaining in tmp2
+            output.push(format!("    clear {}", tmp2));
+            Ok((output, true))
+        }
+        "length" => {
+            // Counts instructions in a 1# program
+            // length <prog> <count> <tmp>
+            // Counts sequences of 1s followed by #s
+            if parts.len() != 4 {
+                return Err(format!(
+                    "Line {}: 'length' expects 3 arguments: length <prog> <count> <tmp>",
+                    line_num
+                ));
+            }
+            let (prog, count, tmp) = (parts[1], parts[2], parts[3]);
+            let lbl = unique_label("len");
+            output.push(format!("    clear {}", count));
+            output.push(format!("    move {} {}", prog, tmp));
+            // State machine: look for 1s, then #s
+            output.push(format!("{}:", lbl));
+            output.push(format!("    case {}", tmp));
+            output.push(format!("    goto {}_done", lbl));
+            output.push(format!("    goto {}_ones", lbl));
+            output.push(format!("    goto {}", lbl)); // skip leading #s (shouldn't happen in valid program)
+            output.push(format!("{}_ones:", lbl));
+            // Reading 1s of an instruction
+            output.push(format!("    case {}", tmp));
+            output.push(format!("    goto {}_done", lbl)); // ended mid-instruction
+            output.push(format!("    goto {}_ones", lbl)); // more 1s
+            output.push(format!("    goto {}_hashes", lbl)); // found first #
+            output.push(format!("{}_hashes:", lbl));
+            // Reading #s of an instruction
+            output.push(format!("    case {}", tmp));
+            output.push(format!("    goto {}_count", lbl)); // end of program, count this instruction
+            output.push(format!("    goto {}_count", lbl)); // start of new instruction
+            output.push(format!("    goto {}_hashes", lbl)); // more #s
+            output.push(format!("{}_count:", lbl));
+            // Count this instruction
+            output.push(format!("    add 1 {}", count));
+            output.push(format!("    goto {}", lbl));
+            output.push(format!("{}_done:", lbl));
+            Ok((output, true))
+        }
+        "write" => {
+            // Generates a program that outputs the input value
+            // write <input> <output> <tmp>
+            // For each symbol in input:
+            //   1 -> output "1#" (add 1 to R1)
+            //   # -> output "1##" (add # to R1)
+            if parts.len() != 4 {
+                return Err(format!(
+                    "Line {}: 'write' expects 3 arguments: write <input> <output> <tmp>",
+                    line_num
+                ));
+            }
+            let (input, out, tmp) = (parts[1], parts[2], parts[3]);
+            let lbl = unique_label("wrt");
+            output.push(format!("    clear {}", out));
+            output.push(format!("    move {} {}", input, tmp));
+            output.push(format!("{}:", lbl));
+            output.push(format!("    case {}", tmp));
+            output.push(format!("    goto {}_done", lbl));
+            output.push(format!("    goto {}_one", lbl));
+            output.push(format!("    goto {}_hash", lbl));
+            output.push(format!("{}_one:", lbl));
+            // Emit "1#" (add 1 to R1)
+            output.push(format!("    add 1 {}", out));
+            output.push(format!("    add # {}", out));
+            output.push(format!("    goto {}", lbl));
+            output.push(format!("{}_hash:", lbl));
+            // Emit "1##" (add # to R1)
+            output.push(format!("    add 1 {}", out));
+            output.push(format!("    add # {}", out));
+            output.push(format!("    add # {}", out));
+            output.push(format!("    goto {}", lbl));
+            output.push(format!("{}_done:", lbl));
+            Ok((output, true))
+        }
+        "diag" => {
+            // Diagonalization: given x, produces write(x) + x
+            // diag <reg> <tmp1> <tmp2> <tmp3>
+            // Running the result gives phi_x(x)
+            if parts.len() != 5 {
+                return Err(format!(
+                    "Line {}: 'diag' expects 4 arguments: diag <reg> <tmp1> <tmp2> <tmp3>",
+                    line_num
+                ));
+            }
+            let (reg, tmp1, tmp2, tmp3) = (parts[1], parts[2], parts[3], parts[4]);
+            let lbl = unique_label("diag");
+            // Copy input to tmp1 (to preserve original for appending)
+            output.push(format!("    copy {} {} {}", reg, tmp1, tmp2));
+            // Run write on the input, output to tmp2
+            output.push(format!("    write {} {} {}", reg, tmp2, tmp3));
+            // Now tmp2 has write(x), tmp1 has x
+            // Move write(x) to reg
+            output.push(format!("    move {} {}", tmp2, reg));
+            // Append x to reg
+            output.push(format!("    move {} {}", tmp1, reg));
+            output.push(format!("{}:", lbl)); // dummy label for unique_label
+            Ok((output, true))
+        }
+        "bump" => {
+            // Bumps register numbers in a program by n
+            // bump <prog> <n> <output> <tmp1> <tmp2> <tmp3>
+            // n is a unary number (1^n)
+            if parts.len() != 7 {
+                return Err(format!(
+                    "Line {}: 'bump' expects 6 arguments: bump <prog> <n> <output> <tmp1> <tmp2> <tmp3>",
+                    line_num
+                ));
+            }
+            let (prog, n, out, tmp1, tmp2, tmp3) = (parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]);
+            let lbl = unique_label("bump");
+            output.push(format!("    clear {}", out));
+            output.push(format!("    move {} {}", prog, tmp1));
+            // Copy n to tmp3 for repeated use
+            output.push(format!("    copy {} {} {}", n, tmp3, tmp2));
+            output.push(format!("{}:", lbl));
+            output.push(format!("    case {}", tmp1));
+            output.push(format!("    goto {}_done", lbl));
+            output.push(format!("    goto {}_ones", lbl));
+            output.push(format!("    goto {}", lbl)); // skip (shouldn't happen)
+            output.push(format!("{}_ones:", lbl));
+            // Read 1s (register number)
+            output.push(format!("    add 1 {}", tmp2)); // count 1s in tmp2
+            output.push(format!("    case {}", tmp1));
+            output.push(format!("    goto {}_emit", lbl)); // end of input
+            output.push(format!("    goto {}_ones", lbl)); // more 1s
+            output.push(format!("    goto {}_hash", lbl)); // found first #
+            output.push(format!("{}_hash:", lbl));
+            // Add bump amount to tmp2
+            output.push(format!("    copy {} {} {}", tmp3, out, prog)); // borrow prog temporarily
+            output.push(format!("{}_add_n:", lbl));
+            output.push(format!("    case {}", out));
+            output.push(format!("    goto {}_emit_1s", lbl));
+            output.push(format!("    goto {}_add_n_1", lbl));
+            output.push(format!("    goto {}_add_n", lbl));
+            output.push(format!("{}_add_n_1:", lbl));
+            output.push(format!("    add 1 {}", tmp2));
+            output.push(format!("    goto {}_add_n", lbl));
+            output.push(format!("{}_emit_1s:", lbl));
+            // Emit the 1s from tmp2
+            output.push(format!("    case {}", tmp2));
+            output.push(format!("    goto {}_emit_hashes", lbl));
+            output.push(format!("    goto {}_emit_1", lbl));
+            output.push(format!("    goto {}_emit_1s", lbl)); // skip #s in tmp2 (shouldn't happen)
+            output.push(format!("{}_emit_1:", lbl));
+            output.push(format!("    add 1 {}", out));
+            output.push(format!("    goto {}_emit_1s", lbl));
+            output.push(format!("{}_emit_hashes:", lbl));
+            // Emit #s until we hit a 1 or end
+            output.push(format!("    add # {}", out));
+            output.push(format!("    case {}", tmp1));
+            output.push(format!("    goto {}_done", lbl));
+            output.push(format!("    goto {}_ones", lbl)); // new instruction
+            output.push(format!("    goto {}_emit_hashes", lbl)); // more #s
+            output.push(format!("{}_emit:", lbl));
+            // Edge case: emit remaining and done
+            output.push(format!("    case {}", tmp2));
+            output.push(format!("    goto {}_done", lbl));
+            output.push(format!("    goto {}_emit_final", lbl));
+            output.push(format!("    goto {}_emit", lbl));
+            output.push(format!("{}_emit_final:", lbl));
+            output.push(format!("    add 1 {}", out));
+            output.push(format!("    goto {}_emit", lbl));
+            output.push(format!("{}_done:", lbl));
+            output.push(format!("    clear {}", tmp3));
+            Ok((output, true))
+        }
         _ => Ok((Vec::new(), false)),
     }
 }
@@ -1067,5 +1283,68 @@ addone R2
         assert!(expanded.contains("case R1"));
         assert!(expanded.contains("add 1 R2"));
         assert!(expanded.contains("add # R2"));
+    }
+
+    #[test]
+    fn test_compare_eq_macro() {
+        reset_label_counter();
+        let expanded = expand_macros("compare_eq R1 R2 R3 R4 R5").unwrap();
+        // Fully expanded - should have case instructions for comparison
+        assert!(expanded.contains("case R4")); // tmp1
+        assert!(expanded.contains("case R5")); // tmp2
+        assert!(expanded.contains("add 1 R3")); // result = 1 if equal
+    }
+
+    #[test]
+    fn test_length_macro() {
+        reset_label_counter();
+        let expanded = expand_macros("length R1 R2 R3").unwrap();
+        // Fully expanded - should have case R2 for clearing and case R3 for reading
+        assert!(expanded.contains("case R2")); // clear R2
+        assert!(expanded.contains("case R3")); // reading symbols
+        assert!(expanded.contains("add 1 R2")); // counting
+    }
+
+    #[test]
+    fn test_write_macro() {
+        reset_label_counter();
+        let expanded = expand_macros("write R1 R2 R3").unwrap();
+        // Fully expanded - should have case R2 for clearing and output to R2
+        assert!(expanded.contains("case R2")); // clear R2
+        assert!(expanded.contains("case R3")); // reading from tmp
+        assert!(expanded.contains("add 1 R2"));
+        assert!(expanded.contains("add # R2"));
+    }
+
+    #[test]
+    fn test_diag_macro() {
+        reset_label_counter();
+        let expanded = expand_macros("diag R1 R2 R3 R4").unwrap();
+        // diag uses copy, write, move - all expanded
+        assert!(expanded.contains("case R1")); // copy source
+        assert!(expanded.contains("add 1 R2")); // output from write
+    }
+
+    #[test]
+    fn test_bump_macro() {
+        reset_label_counter();
+        let expanded = expand_macros("bump R1 R2 R3 R4 R5 R6").unwrap();
+        // Fully expanded
+        assert!(expanded.contains("case R3")); // clear R3
+        assert!(expanded.contains("case R4")); // reading program
+        assert!(expanded.contains("add 1 R3")); // output
+    }
+
+    #[test]
+    fn test_parametric_macro_wrong_args() {
+        reset_label_counter();
+        // These macros require specific argument counts
+        let result = expand_macros("compare_eq R1");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects 5 arguments"));
+
+        let result = expand_macros("length R1");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expects 3 arguments"));
     }
 }

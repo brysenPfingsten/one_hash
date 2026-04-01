@@ -506,6 +506,13 @@ fn print_assembler_usage() {
     eprintln!("  compare <a> <b> <t1-t3> <lt> <eq> <gt>  Comparison branch");
     eprintln!("  divide <dd> <dv> <q> <r> <t1-t4>      Division with remainder");
     eprintln!();
+    eprintln!("Textbook 1# program macros:");
+    eprintln!("  compare_eq <a> <b> <res> <t1> <t2>    Compare for equality (1 if equal)");
+    eprintln!("  length <prog> <count> <tmp>           Count instructions (unary output)");
+    eprintln!("  write <in> <out> <tmp>                Generate program that outputs value");
+    eprintln!("  diag <reg> <t1> <t2> <t3>             Diagonalization: write(x) + x");
+    eprintln!("  bump <prog> <n> <out> <t1> <t2> <t3>  Bump register numbers by n (unary)");
+    eprintln!();
     eprintln!("User-defined macros:");
     eprintln!("  .macro <name> <param1> <param2> ...   Begin macro definition");
     eprintln!("  .endmacro                             End macro definition");
@@ -515,4 +522,5 @@ fn print_assembler_usage() {
     eprintln!("  one_hash --asm program.asm            # Compile to stdout");
     eprintln!("  one_hash --asm program.asm -o out.1h  # Compile to file");
     eprintln!("  one_hash --asm -e 'add 1 R1'          # Compile inline");
+    eprintln!("  one_hash --asm -e 'length R1 R2 R3'   # Count instructions macro");
 }

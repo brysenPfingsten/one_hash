@@ -157,6 +157,32 @@ label:        ; Define a label
 | `compare` | `<a> <b> <t1-t3> <lt> <eq> <gt>` | Comparison branch |
 | `divide` | `<dd> <dv> <q> <r> <t1-t4>` | Division with remainder |
 
+#### Textbook 1# Program Macros
+
+These implement standard programs from the 1# textbook:
+
+| Macro | Arguments | Effect |
+|-------|-----------|--------|
+| `compare_eq` | `<a> <b> <result> <t1> <t2>` | Compare a and b for equality (1 if equal) |
+| `length` | `<prog> <count> <tmp>` | Count instructions in program (unary output) |
+| `write` | `<input> <output> <tmp>` | Generate program that outputs input value |
+| `diag` | `<reg> <t1> <t2> <t3>` | Diagonalization: produces write(x) + x |
+| `bump` | `<prog> <n> <out> <t1> <t2> <t3>` | Bump register numbers by n (n is unary) |
+
+**Example usage:**
+
+```bash
+# Compare two registers for equality
+one_hash --asm -e 'compare_eq R1 R2 R3 R4 R5' -o compare.1h
+one_hash compare.1h -r1 '11#' -r2 '11#'
+# Result: R3: 1 (equal)
+
+# Count instructions in a program
+one_hash --asm -e 'length R1 R2 R3' -o len.1h
+one_hash len.1h -r1 '1#11##'  # 2 instructions
+# Result: R2: 11 (unary 2)
+```
+
 ### User-Defined Macros
 
 ```asm

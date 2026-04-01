@@ -11,6 +11,7 @@
 //! - `halt` - Stop execution
 //! - `label:` - Define a label
 //! - `; comment` - Comment
+//! - `__RAW__ <1# code>` - Embed raw 1# code directly (used by macros)
 
 pub mod macros;
 
@@ -191,17 +192,61 @@ fn resolve_labels(asm: Vec<AsmInstruction>) -> Result<Vec<Instruction>, String> 
     Ok(result)
 }
 
+/// Extracts __RAW__ directives and separates them from regular assembly.
+/// Returns (raw_code_segments, remaining_assembly).
+fn extract_raw_code(source: &str) -> (Vec<(usize, String)>, String) {
+    let mut raw_segments: Vec<(usize, String)> = Vec::new();
+    let mut assembly_lines: Vec<String> = Vec::new();
+    let mut line_number = 0;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("__RAW__") {
+            let raw_code = trimmed.strip_prefix("__RAW__").unwrap().trim().to_string();
+            // Insert a placeholder to track position
+            assembly_lines.push(format!("__RAW_PLACEHOLDER_{}__:", raw_segments.len()));
+            raw_segments.push((line_number, raw_code));
+        } else {
+            assembly_lines.push(line.to_string());
+        }
+        line_number += 1;
+    }
+
+    (raw_segments, assembly_lines.join("\n"))
+}
+
 /// Compiles assembly source to 1# code.
 pub fn compile(source: &str) -> Result<String, String> {
     reset_label_counter();
     let expanded = expand_macros(source)?;
-    let asm = parse_assembly(&expanded)?;
-    let instructions = resolve_labels(asm)?;
-    Ok(instructions
-        .iter()
-        .map(|i| i.to_one_hash())
-        .collect::<Vec<_>>()
-        .join(""))
+
+    // Extract raw code segments
+    let (raw_segments, assembly_only) = extract_raw_code(&expanded);
+
+    if raw_segments.is_empty() {
+        // No raw code, compile normally
+        let asm = parse_assembly(&assembly_only)?;
+        let instructions = resolve_labels(asm)?;
+        Ok(instructions
+            .iter()
+            .map(|i| i.to_one_hash())
+            .collect::<Vec<_>>()
+            .join(""))
+    } else if assembly_only.lines().all(|l| {
+        let t = l.trim();
+        t.is_empty() || t.starts_with(';') || t.starts_with("__RAW_PLACEHOLDER_")
+    }) {
+        // Only raw code, no assembly to compile
+        Ok(raw_segments
+            .into_iter()
+            .map(|(_, code)| code)
+            .collect::<Vec<_>>()
+            .join(""))
+    } else {
+        // Mixed: for now, require raw code to be standalone (no mixing)
+        // This is a simplification - raw macros should be used alone
+        Err("Cannot mix __RAW__ directives with regular assembly. Raw macros must be used standalone.".to_string())
+    }
 }
 
 /// Compiles assembly source to 1# code with verbose output.
@@ -217,17 +262,35 @@ pub fn compile_verbose(source: &str) -> Result<String, String> {
     }
     println!();
 
-    let asm = parse_assembly(&expanded)?;
-    let instructions = resolve_labels(asm)?;
+    // Extract raw code segments
+    let (raw_segments, assembly_only) = extract_raw_code(&expanded);
 
-    println!("Resolved ({} instructions)", instructions.len());
-    println!();
+    if raw_segments.is_empty() {
+        let asm = parse_assembly(&assembly_only)?;
+        let instructions = resolve_labels(asm)?;
 
-    Ok(instructions
-        .iter()
-        .map(|i| i.to_one_hash())
-        .collect::<Vec<_>>()
-        .join(""))
+        println!("Resolved ({} instructions)", instructions.len());
+        println!();
+
+        Ok(instructions
+            .iter()
+            .map(|i| i.to_one_hash())
+            .collect::<Vec<_>>()
+            .join(""))
+    } else if assembly_only.lines().all(|l| {
+        let t = l.trim();
+        t.is_empty() || t.starts_with(';') || t.starts_with("__RAW_PLACEHOLDER_")
+    }) {
+        println!("Raw 1# code ({} segments)", raw_segments.len());
+        println!();
+        Ok(raw_segments
+            .into_iter()
+            .map(|(_, code)| code)
+            .collect::<Vec<_>>()
+            .join(""))
+    } else {
+        Err("Cannot mix __RAW__ directives with regular assembly. Raw macros must be used standalone.".to_string())
+    }
 }
 
 /// Expands macros only without compiling.
