@@ -19,3 +19,4 @@
 .endmacro
 
 diag R1 R2 R3
+add # R2
