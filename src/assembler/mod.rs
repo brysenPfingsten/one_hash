@@ -6,6 +6,7 @@
 //!
 //! - `add 1 R1` - Append 1 to register
 //! - `add # R1` - Append # to register
+//! - `add 11##11 R1` - Append a sequence of 1/# to register
 //! - `case R1` - Branch on first symbol of register
 //! - `goto label` - Jump to label
 //! - `halt` - Stop execution
@@ -78,20 +79,31 @@ fn parse_assembly(source: &str) -> Result<Vec<AsmInstruction>, String> {
             "add" => {
                 if parts.len() != 3 {
                     return Err(format!(
-                        "Line {}: 'add' expects 2 arguments: add <1|#> <register>",
+                        "Line {}: 'add' expects 2 arguments: add <1/# sequence> <register>",
                         line_num
                     ));
                 }
                 let reg =
                     parse_register(parts[2]).map_err(|e| format!("Line {}: {}", line_num, e))?;
-                match parts[1] {
-                    "1" => instructions.push(AsmInstruction::Add1(reg)),
-                    "#" => instructions.push(AsmInstruction::AddHash(reg)),
-                    _ => {
-                        return Err(format!(
-                            "Line {}: 'add' expects '1' or '#', got: {}",
-                            line_num, parts[1]
-                        ))
+                let symbols = parts[1];
+                if symbols.is_empty() {
+                    return Err(format!(
+                        "Line {}: 'add' expects a non-empty 1/# sequence",
+                        line_num
+                    ));
+                }
+                for (idx, ch) in symbols.chars().enumerate() {
+                    match ch {
+                        '1' => instructions.push(AsmInstruction::Add1(reg)),
+                        '#' => instructions.push(AsmInstruction::AddHash(reg)),
+                        _ => {
+                            return Err(format!(
+                                "Line {}: 'add' expects only '1' and '#', got '{}' at position {}",
+                                line_num,
+                                ch,
+                                idx + 1
+                            ))
+                        }
                     }
                 }
             }
@@ -307,6 +319,18 @@ mod tests {
     fn test_simple_compile() {
         let code = compile("add 1 R1\nadd # R2").unwrap();
         assert_eq!(code, "1#11##");
+    }
+
+    #[test]
+    fn test_add_sequence() {
+        let code = compile("add 11##11 R1").unwrap();
+        assert_eq!(code, "1#1#1##1##1#1#");
+    }
+
+    #[test]
+    fn test_add_sequence_rejects_invalid_chars() {
+        let err = compile("add 10# R1").unwrap_err();
+        assert!(err.contains("expects only '1' and '#'"));
     }
 
     #[test]

@@ -130,6 +130,7 @@ The assembler provides a human-readable syntax for writing 1# programs.
 ```asm
 add 1 R1      ; Append 1 to register 1
 add # R2      ; Append # to register 2
+add 11##11 R1 ; Append a sequence of 1/# to register 1
 case R1       ; Branch on first symbol of R1
 goto label    ; Jump to label
 halt          ; Stop execution

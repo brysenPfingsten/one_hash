@@ -483,6 +483,7 @@ fn print_assembler_usage() {
     eprintln!("Assembly syntax:");
     eprintln!("  add 1 R1      Append 1 to register 1");
     eprintln!("  add # R2      Append # to register 2");
+    eprintln!("  add 11##11 R1 Append a 1/# sequence to R1");
     eprintln!("  case R1       Branch on first symbol of R1");
     eprintln!("  goto label    Jump to label");
     eprintln!("  halt          Stop execution");
